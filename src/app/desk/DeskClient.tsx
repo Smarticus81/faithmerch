@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { Check, Design, DesignStatus } from "@/lib/types";
 import { failedCheckCount, hasFailedCheck } from "@/lib/types";
 
@@ -71,12 +72,31 @@ const CHECK_LABEL: Record<Check["key"], string> = {
 export function DeskClient({
   initialDesigns,
   igQuota,
+  demoData = true,
 }: {
   initialDesigns: Design[];
   igQuota: { used: number; cap: number };
+  demoData?: boolean;
 }) {
+  const router = useRouter();
   const [designs, setDesigns] = useState(initialDesigns);
   const [selectedId, setSelectedId] = useState(initialDesigns[0]?.id ?? null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [composing, setComposing] = useState(false);
+
+  // Server data changed (poll refresh) — merge, keeping the selection.
+  useEffect(() => setDesigns(initialDesigns), [initialDesigns]);
+
+  // Generation and publishing progress server-side; poll while active.
+  useEffect(() => {
+    if (demoData) return;
+    const active = designs.some((d) =>
+      ["generating", "publishing", "approved"].includes(d.status)
+    );
+    if (!active) return;
+    const t = setInterval(() => router.refresh(), 8000);
+    return () => clearInterval(t);
+  }, [demoData, designs, router]);
 
   const selected = useMemo(
     () => designs.find((d) => d.id === selectedId) ?? null,
@@ -98,20 +118,39 @@ export function DeskClient({
   const failCount = selected ? failedCheckCount(selected) : 0;
   const approveBlocked = failCount > 0;
 
-  // Phase 1: decisions mutate local state only. Phase 5 wires the API.
   const decide = useCallback(
     (decision: "approved" | "killed") => {
       if (!selected || selected.status !== "ready") return;
       if (decision === "approved" && hasFailedCheck(selected)) return;
+      // Optimistic; the server is authoritative and re-verifies the gate.
       setDesigns((prev) =>
         prev.map((d) =>
           d.id === selected.id
-            ? { ...d, status: decision, decidedAt: new Date().toISOString() }
+            ? {
+                ...d,
+                status: decision === "approved" ? "approved" : "killed",
+                decidedAt: new Date().toISOString(),
+              }
             : d
         )
       );
+      if (!demoData) {
+        void fetch(`/api/designs/${selected.id}/decision`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            decision: decision === "approved" ? "approve" : "kill",
+          }),
+        }).then(async (res) => {
+          if (!res.ok) {
+            const body = (await res.json().catch(() => null)) as { error?: string } | null;
+            setActionError(body?.error ?? `Decision failed (${res.status}).`);
+          }
+          router.refresh();
+        });
+      }
     },
-    [selected]
+    [selected, demoData, router]
   );
 
   useEffect(() => {
@@ -167,9 +206,46 @@ export function DeskClient({
         </div>
       </header>
 
+      {demoData && (
+        <p className="border-b border-amber-900/40 bg-amber-950/40 px-5 py-1.5 text-xs text-amber-400">
+          Seeded demo data — database unreachable. Fill .env and restart to work with real designs.
+        </p>
+      )}
+      {actionError && (
+        <p className="border-b border-red-900/40 bg-red-950/40 px-5 py-1.5 text-xs text-red-400">
+          {actionError}
+          <button className="ml-3 underline" onClick={() => setActionError(null)}>
+            dismiss
+          </button>
+        </p>
+      )}
+
       <div className="flex min-h-0 flex-1">
-        {/* ---------- Left rail: queue ---------- */}
+        {/* ---------- Left rail: queue + composer ---------- */}
         <nav className="w-64 shrink-0 overflow-y-auto border-r border-stone-800">
+          <Composer
+            disabled={demoData}
+            busy={composing}
+            onSubmit={async (draft) => {
+              setComposing(true);
+              setActionError(null);
+              try {
+                const res = await fetch("/api/designs/generate", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(draft),
+                });
+                if (!res.ok) {
+                  const body = (await res.json().catch(() => null)) as { error?: string } | null;
+                  setActionError(body?.error ?? `Generate failed (${res.status}).`);
+                } else {
+                  router.refresh();
+                }
+              } finally {
+                setComposing(false);
+              }
+            }}
+          />
           <ul>
             {designs.map((d) => (
               <li key={d.id}>
@@ -368,6 +444,98 @@ export function DeskClient({
         </div>
       </footer>
     </div>
+  );
+}
+
+function Composer({
+  disabled,
+  busy,
+  onSubmit,
+}: {
+  disabled: boolean;
+  busy: boolean;
+  onSubmit: (draft: {
+    concept: string;
+    verseRef?: string;
+    translation?: string;
+  }) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [concept, setConcept] = useState("");
+  const [verseRef, setVerseRef] = useState("");
+  const [translation, setTranslation] = useState("KJV");
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        disabled={disabled}
+        className="w-full border-b border-stone-800 px-4 py-2.5 text-left text-sm text-emerald-400 transition-colors hover:bg-stone-900 disabled:cursor-not-allowed disabled:text-stone-600"
+        title={disabled ? "Unavailable on demo data" : "Describe a new design"}
+      >
+        + New design
+      </button>
+    );
+  }
+
+  return (
+    <form
+      className="space-y-2 border-b border-stone-800 px-4 py-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!concept.trim()) return;
+        onSubmit({
+          concept: concept.trim(),
+          verseRef: verseRef.trim() || undefined,
+          translation: verseRef.trim() ? translation : undefined,
+        });
+        setOpen(false);
+        setConcept("");
+        setVerseRef("");
+      }}
+    >
+      <textarea
+        autoFocus
+        value={concept}
+        onChange={(e) => setConcept(e.target.value)}
+        placeholder="Describe the design — e.g. vintage botanical engraving of three lilies"
+        rows={3}
+        className="w-full rounded-sm border border-stone-700 bg-stone-900 px-2 py-1.5 text-sm text-stone-200 placeholder:text-stone-600 focus:border-emerald-600 focus:outline-none"
+      />
+      <div className="flex gap-2">
+        <input
+          value={verseRef}
+          onChange={(e) => setVerseRef(e.target.value)}
+          placeholder="Verse (optional)"
+          className="min-w-0 flex-1 rounded-sm border border-stone-700 bg-stone-900 px-2 py-1 text-xs text-stone-200 placeholder:text-stone-600 focus:border-emerald-600 focus:outline-none"
+        />
+        <select
+          value={translation}
+          onChange={(e) => setTranslation(e.target.value)}
+          className="rounded-sm border border-stone-700 bg-stone-900 px-1 py-1 text-xs text-stone-300"
+        >
+          <option>KJV</option>
+          <option>ASV</option>
+          <option>WEB</option>
+        </select>
+      </div>
+      <div className="flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="px-2 py-1 text-xs text-stone-500 hover:text-stone-300"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={busy || !concept.trim()}
+          className="rounded-sm bg-emerald-700 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
+        >
+          {busy ? "Queueing…" : "Generate"}
+        </button>
+      </div>
+    </form>
   );
 }
 

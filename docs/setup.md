@@ -50,6 +50,19 @@ cp .env.example .env
 Fill in **every** value. The server refuses to boot if any are missing and
 tells you which one.
 
+### 5. Inngest (background jobs)
+
+Generation takes 30–90s and never runs in a request handler — jobs run on
+Inngest.
+
+- **Local dev:** `npx inngest-cli@latest dev` in a second terminal, set
+  `INNGEST_DEV=1` in `.env`, and put any non-empty placeholder in the two
+  key vars.
+- **Production:** create an app at <https://app.inngest.com>, connect the
+  Vercel integration (it registers `/api/inngest` automatically), and set
+  `INNGEST_EVENT_KEY` + `INNGEST_SIGNING_KEY` in Vercel env vars.
+- The weekly `refresh-meta-token` cron runs on Inngest too — no extra setup.
+
 ## Supplier apps (⏳ install before phase 6 acceptance)
 
 Order routing is handled entirely by the suppliers' native Shopify apps —
@@ -91,9 +104,26 @@ the customer.
    product tagging in posts only works after this sync completes and the
    commerce account is approved.
 
-## Vercel (⏳ phase 8)
+## Supplier API notes (verify on first live run)
+
+Every supplier call is isolated in `src/lib/clients/{gelato,printful}.ts`.
+The Printful mockup-generator and sync-product endpoints follow their
+published docs. The Gelato e-commerce endpoints could not be verified from
+the build environment (network policy) — on your first run with a real
+`GELATO_API_KEY`, if a Gelato call 404s, fix the path in that one client
+file; nothing else touches it. Printful catalog variant ids in
+`publish-design.ts` (`PRINTFUL_VARIANT_IDS`) assume Bella+Canvas 3001
+S–2XL — adjust per garment.
+
+## Vercel (phase 8)
 
 1. Import the repo at <https://vercel.com/new>.
 2. Add every var from `.env.example` to Project → Settings → Environment
    Variables.
-3. Deploy. Run `npm run db:migrate` against the production `DATABASE_URL`.
+3. Deploy. Run `npm run db:migrate` (drizzle-kit) with the production
+   `DATABASE_URL` in your shell to create the tables.
+4. Install the Inngest Vercel integration (see §5 above).
+5. Smoke test: open `https://<app>/desk?key=<ADMIN_SECRET>`, submit a
+   design ("Consider the lilies, Matthew 6:28, KJV"), watch it move
+   generating → ready with checks, then approve and confirm the Shopify
+   product, the IG post, and the quota meter ticking to 1/25.
