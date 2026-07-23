@@ -8,7 +8,10 @@ import { NextRequest, NextResponse } from "next/server";
 export function middleware(req: NextRequest) {
   const secret = process.env.ADMIN_SECRET;
   if (!secret) {
-    return new NextResponse("Server missing ADMIN_SECRET", { status: 500 });
+    return new NextResponse(
+      "Server is missing the ADMIN_SECRET environment variable. Add every variable from .env.example in Vercel → Project → Settings → Environment Variables, then redeploy.",
+      { status: 500 }
+    );
   }
 
   const keyParam = req.nextUrl.searchParams.get("key");
