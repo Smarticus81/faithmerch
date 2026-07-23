@@ -36,4 +36,6 @@ npm run db:generate    # regenerate SQL after schema changes
 - [x] Phase 5 — `/desk` on real data, approve/kill, new-design composer
 - [x] Phase 6 — Shopify publish (idempotent, step-persisted)
 - [x] Phase 7 — Instagram publish + rolling-24h rate limiter + token refresh
-- [ ] Phase 8 — Vercel deploy, migrations, smoke test (needs operator accounts/keys)
+- [~] Phase 8 — deploy-ready: migrations generated, smoke test in
+  `scripts/smoke.sh`, full walkthrough in `docs/setup.md`. The actual
+  Vercel import + env vars + supplier/Meta accounts are operator steps.
