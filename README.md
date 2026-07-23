@@ -31,9 +31,9 @@ npm run db:generate    # regenerate SQL after schema changes
 
 - [x] Phase 1 — scaffold, schema, env validation, `/desk` shell (seeded fake data)
 - [x] Phase 2 — quality gate + scripture corpus (KJV/ASV/WEB)
-- [ ] Phase 3 — Recraft generation + background job
-- [ ] Phase 4 — mockups (supplier flat + on-model)
-- [ ] Phase 5 — `/desk` on real data, approve/kill
-- [ ] Phase 6 — Shopify publish (idempotent)
-- [ ] Phase 7 — Instagram publish + rolling-24h rate limiter
-- [ ] Phase 8 — Vercel deploy, migrations, smoke test
+- [x] Phase 3 — Recraft generation + Inngest background job
+- [x] Phase 4 — mockups (supplier flat + Replicate on-model)
+- [x] Phase 5 — `/desk` on real data, approve/kill, new-design composer
+- [x] Phase 6 — Shopify publish (idempotent, step-persisted)
+- [x] Phase 7 — Instagram publish + rolling-24h rate limiter + token refresh
+- [ ] Phase 8 — Vercel deploy, migrations, smoke test (needs operator accounts/keys)

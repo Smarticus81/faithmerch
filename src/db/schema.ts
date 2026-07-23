@@ -69,6 +69,15 @@ export const designs = pgTable(
 
     status: designStatus("status").notNull().default("draft"),
 
+    /**
+     * Per-step publish results, persisted before the next step starts so a
+     * re-run resumes instead of duplicating (idempotent publish).
+     */
+    publishSteps: jsonb("publish_steps")
+      .$type<Record<string, string | boolean>>()
+      .notNull()
+      .default({}),
+
     // Publish artifacts
     shopifyProductId: text("shopify_product_id"),
     shopifyHandle: text("shopify_handle"),
@@ -101,6 +110,20 @@ export const igPublishLog = pgTable(
   },
   (table) => [index("ig_publish_log_published_at_idx").on(table.publishedAt)]
 );
+
+/**
+ * Current Meta long-lived token. Long-lived tokens expire at 60 days; a
+ * scheduled job refreshes them and stores the result here (env vars can't
+ * be rewritten at runtime). Seeded from META_LONG_LIVED_TOKEN on first use.
+ */
+export const metaTokens = pgTable("meta_tokens", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  token: text("token").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  refreshedAt: timestamp("refreshed_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
 
 export type DesignRow = typeof designs.$inferSelect;
 export type NewDesignRow = typeof designs.$inferInsert;

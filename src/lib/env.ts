@@ -21,6 +21,8 @@ export const REQUIRED_ENV_VARS = [
   "META_LONG_LIVED_TOKEN",
   "IG_USER_ID",
   "ADMIN_SECRET",
+  "INNGEST_EVENT_KEY",
+  "INNGEST_SIGNING_KEY",
 ] as const;
 
 export type RequiredEnvVar = (typeof REQUIRED_ENV_VARS)[number];
